@@ -48,50 +48,13 @@ class FeedParentViewModel(
     private val _trackedMatchIds = MutableStateFlow<List<String>>(emptyList())
     val trackedMatchIds: StateFlow<List<String>> = _trackedMatchIds.asStateFlow()
 
-    // Placar ao vivo de cada partida ativa, indexado por matchId
-    private val _liveScores = MutableStateFlow<Map<String, LiveMatch>>(emptyMap())
-    val liveScores: StateFlow<Map<String, LiveMatch>> = _liveScores.asStateFlow()
-
-    // Um Job por partida — todos vivem no escopo do ViewModel PAI, não do widget
-    private val liveMatchJobs = mutableMapOf<String, Job>()
-
     fun toggleMatchTracking(matchId: String) {
         if (matchId in _trackedMatchIds.value) {
-            stopTracking(matchId)
-        }
-        else startTracking(matchId)
-    }
-
-    private fun startTracking(matchId: String) {
-        if (liveMatchJobs.containsKey(matchId)) {
-            return
-        }
-
-        Log.d(TAG, "Iniciando coleta — matchId=$matchId (Jobs ativos após: ${liveMatchJobs.size + 1})")
-
-        _trackedMatchIds.update {
-            it.plus(matchId)
-        }
-
-        liveMatchJobs[matchId] = viewModelScope.launch {
-            repository.observeLiveMatch(matchId).collect { match ->
-                _liveScores.update { current -> current + (matchId to match) }
+            _trackedMatchIds.update { list -> list.filterNot { it == matchId } }
+        } else {
+            _trackedMatchIds.update {
+                it.plus(matchId)
             }
         }
-    }
-
-    private fun stopTracking(matchId: String) {
-        Log.d(TAG, "Cancelando coleta — matchId=$matchId (Jobs restantes após: ${liveMatchJobs.size - 1})")
-        liveMatchJobs[matchId]?.cancel()
-        liveMatchJobs.remove(matchId)
-        _trackedMatchIds.update { list -> list.filterNot { it == matchId } }
-        _liveScores.update { it - matchId }
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        Log.d(TAG, "onCleared — cancelando todos os ${liveMatchJobs.size} Jobs ativos")
-        liveMatchJobs.values.forEach { it.cancel() }
-        liveMatchJobs.clear()
     }
 }

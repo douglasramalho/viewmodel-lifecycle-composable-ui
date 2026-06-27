@@ -28,18 +28,24 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreOwner
+import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreProvider
 import com.example.viewmodelcomposablescopeplayground.data.model.LiveMatch
 import com.example.viewmodelcomposablescopeplayground.data.model.MatchSchedule
 import com.example.viewmodelcomposablescopeplayground.data.model.NewsPost
 import com.example.viewmodelcomposablescopeplayground.ui.theme.ViewModelComposableScopePlaygroundTheme
 import org.koin.androidx.compose.koinViewModel
+import org.koin.core.parameter.parametersOf
 
 // ---------------------------------------------------------------------------
 // Ponto de entrada — injeta o único ViewModel via Koin e coleta 4 StateFlows.
@@ -53,13 +59,11 @@ fun MainSportsScreen() {
     val newsFeed by viewModel.newsFeed.collectAsStateWithLifecycle()
     val todayMatches by viewModel.todayMatches.collectAsStateWithLifecycle()
     val trackedMatchIds by viewModel.trackedMatchIds.collectAsStateWithLifecycle()
-    val liveScores by viewModel.liveScores.collectAsStateWithLifecycle()
 
     MainSportsScreenContent(
         newsFeed = newsFeed,
         todayMatches = todayMatches,
         trackedMatchIds = trackedMatchIds,
-        liveScores = liveScores,
         onToggleMatch = viewModel::toggleMatchTracking
     )
 }
@@ -70,7 +74,6 @@ private fun MainSportsScreenContent(
     newsFeed: List<NewsPost>,
     todayMatches: List<MatchSchedule>,
     trackedMatchIds: List<String>,
-    liveScores: Map<String, LiveMatch>,
     onToggleMatch: (String) -> Unit
 ) {
     Scaffold(
@@ -93,6 +96,7 @@ private fun MainSportsScreenContent(
             )
         }
     ) { innerPadding ->
+        val storeProvider = rememberViewModelStoreProvider()
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -135,13 +139,25 @@ private fun MainSportsScreenContent(
             }
 
             items(trackedMatchIds, key = { "live_widget_$it" }) { matchId ->
-                LiveMatchWidget(
-                    match = liveScores[matchId],
-                    modifier = Modifier
-                        .animateItem()
-                        .padding(horizontal = 16.dp)
-                        .padding(bottom = 8.dp)
+                val scopedOwner = rememberViewModelStoreOwner(
+                    provider = storeProvider,
+                    key = "live_widget_$matchId"
                 )
+                CompositionLocalProvider(LocalViewModelStoreOwner provides scopedOwner) {
+                    val liveMatchViewModel = koinViewModel<LiveMatchViewModel> {
+                        parametersOf(matchId)
+                    }
+
+                    val liveScore by liveMatchViewModel.liveScore.collectAsStateWithLifecycle()
+
+                    LiveMatchWidget(
+                        match = liveScore,
+                        modifier = Modifier
+                            .animateItem()
+                            .padding(horizontal = 16.dp)
+                            .padding(bottom = 8.dp)
+                    )
+                }
             }
 
             // ── Divider ─────────────────────────────────────────────────────
@@ -412,7 +428,6 @@ private fun MainScreenTwoLivePreview() {
             newsFeed = previewNews,
             todayMatches = previewMatches,
             trackedMatchIds = previewTracked,
-            liveScores = previewLiveScores,
             onToggleMatch = {}
         )
     }
@@ -426,7 +441,6 @@ private fun MainScreenNoLivePreview() {
             newsFeed = previewNews,
             todayMatches = previewMatches,
             trackedMatchIds = emptyList(),
-            liveScores = emptyMap(),
             onToggleMatch = {}
         )
     }
